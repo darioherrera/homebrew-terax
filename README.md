@@ -7,8 +7,13 @@ a personal fork of [Terax](https://github.com/crynta/terax-ai).
 
 ```sh
 brew tap darioherrera/terax
+brew trust darioherrera/terax
 brew install --cask terax-dario
 ```
+
+Homebrew 6 refuses to load casks from third-party taps until you trust them, so
+the `brew trust` step is required — without it the install fails with
+"Refusing to load cask ... from untrusted tap".
 
 ## Update
 
