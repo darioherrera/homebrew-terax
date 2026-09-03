@@ -3,6 +3,21 @@
 Homebrew tap for [darioherrera/terax-ai](https://github.com/darioherrera/terax-ai),
 a personal fork of [Terax](https://github.com/crynta/terax-ai).
 
+## Requires a GitHub token
+
+`darioherrera/terax-ai` is a **private** repository, so its release assets are
+not downloadable anonymously. Homebrew needs a token with read access to it:
+
+```sh
+export HOMEBREW_GITHUB_API_TOKEN=ghp_your_token_here
+```
+
+Put that line in your shell profile to make it stick. Without it,
+`brew install` fails with a 404 while fetching the `.dmg`.
+
+This tap is therefore only usable on machines authenticated as someone with
+access to the fork.
+
 ## Install
 
 ```sh
@@ -37,11 +52,22 @@ brew uninstall --cask terax-dario
 brew uninstall --zap --cask terax-dario   # also removes settings and caches
 ```
 
+## How the cask stays current
+
+`.github/workflows/update-cask.yml` runs daily (and on demand) to pin the cask
+to the newest **published** release of the fork. Drafts are skipped on purpose:
+`release.yml` in terax-ai creates releases as drafts, and a draft's assets 404
+at the download URL the cask points at.
+
+The workflow needs a `TERAX_READ_TOKEN` secret — a token with read access to
+the private terax-ai repo. Pushing the updated cask uses the automatic
+`GITHUB_TOKEN`, so no personal access token is needed for that half.
+
 ## Notes
 
-- macOS only. Linux users should take the `.AppImage`, `.deb`, or `.rpm` from
-  the [releases page](https://github.com/darioherrera/terax-ai/releases).
-- `conflicts_with cask: "terax"` — this cask installs the same `Terax.app`
-  bundle as upstream, so only one of the two can be linked at a time.
-- The cask is updated automatically by the `update-homebrew-cask` workflow in
-  the terax-ai repo when a release is published.
+- macOS only. For Linux, take the `.AppImage`, `.deb`, or `.rpm` from the
+  releases page.
+- `conflicts_with cask: "terax"` — this installs the same `Terax.app` bundle as
+  upstream, so only one of the two can be linked at a time.
+- The cask ships with placeholder `0000…` hashes until the fork's first release
+  is published; the workflow fills them in.

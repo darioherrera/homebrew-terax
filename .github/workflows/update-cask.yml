@@ -1,0 +1,91 @@
+name: Update cask
+
+# This workflow lives in the tap rather than in terax-ai so that pushing the
+# updated cask only ever writes to *this* repo — the automatic GITHUB_TOKEN
+# covers that, and no personal access token is needed for the push.
+#
+# Reading the release is the part that does need a token: darioherrera/terax-ai
+# is private, so its releases are invisible to the default GITHUB_TOKEN (which
+# is scoped to this repo). Store a token with `repo` read access on terax-ai as
+# the TERAX_READ_TOKEN secret. Without it the workflow fails with a clear
+# message rather than silently doing nothing.
+on:
+  schedule:
+    # Hourly-ish is pointless for a fork that releases rarely; once a day is
+    # enough to pick up a release published while nobody ran this by hand.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to sync (e.g. v0.8.6). Blank = latest."
+        required: false
+
+jobs:
+  update-cask:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Require the read token
+        env:
+          TERAX_READ_TOKEN: ${{ secrets.TERAX_READ_TOKEN }}
+        run: |
+          if [ -z "$TERAX_READ_TOKEN" ]; then
+            echo "::error::TERAX_READ_TOKEN is not set. darioherrera/terax-ai is"
+            echo "::error::private, so a token with read access to it is required."
+            exit 1
+          fi
+
+      - name: Resolve tag
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.TERAX_READ_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          else
+            # --exclude-drafts: release.yml in terax-ai creates the release as a
+            # draft, and a draft's assets 404 at the public download URL the cask
+            # points at. Only a published release is safe to pin.
+            TAG=$(gh release list --repo darioherrera/terax-ai \
+                    --exclude-drafts --limit 1 --json tagName -q '.[0].tagName')
+          fi
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "::warning::No published release found; nothing to sync."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite cask version and hashes
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.TERAX_READ_TOKEN }}
+          TERAX_REPO: darioherrera/terax-ai
+        run: |
+          node scripts/update-homebrew-cask.mjs \
+            --tag "${{ steps.resolve.outputs.tag }}" \
+            --cask Casks/terax-dario.rb
+
+      - name: Commit and push
+        if: steps.resolve.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Cask already up to date; nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/terax-dario.rb
+          git commit -m "terax-dario ${{ steps.resolve.outputs.version }}"
+          git push
